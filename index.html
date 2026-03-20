@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HangAI — Your Conversation Memory</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* ── RESET ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; height: 100dvh; overflow: hidden; }
+
+  /* ── LAYOUT ── */
+  .app { display: grid; grid-template-columns: 280px 1fr; height: 100dvh; }
+  @media (max-width: 700px) { .app { grid-template-columns: 1fr; } .sidebar { display: none; } .sidebar.open { display: flex; position: fixed; inset: 0; z-index: 50; width: 280px; } }
+
+  /* ── SIDEBAR ── */
+  .sidebar { background: #fff; border-right: 1px solid #e8e8e4; display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-top { padding: 20px 16px 12px; border-bottom: 1px solid #e8e8e4; }
+  .logo { font-size: 18px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.3px; }
+  .logo span { color: #0f9b6e; }
+  .logo-sub { font-size: 11px; color: #888; margin-top: 2px; }
+
+  .record-btn { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 12px 16px 4px; padding: 11px 14px; border-radius: 10px; border: 1.5px solid #e0e0dc; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; color: #1a1a1a; transition: all 0.15s; }
+  .record-btn:hover { background: #f5f5f0; }
+  .record-btn.recording { background: #fff5f5; border-color: #e05555; color: #c03030; }
+  .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: #ccc; flex-shrink: 0; transition: background 0.2s; }
+  .record-btn.recording .rec-dot { background: #e05555; animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .section-label { padding: 12px 16px 4px; font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+  .sessions-list { flex: 1; overflow-y: auto; }
+  .session-item { padding: 10px 16px; cursor: pointer; border-left: 2.5px solid transparent; transition: all 0.1s; }
+  .session-item:hover { background: #f8f8f5; }
+  .session-item.active { background: #f0faf5; border-left-color: #0f9b6e; }
+  .session-name { font-size: 13px; font-weight: 500; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-info { font-size: 11px; color: #999; margin-top: 2px; }
+  .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .status-dot.completed { background: #0f9b6e; }
+  .status-dot.processing { background: #e09020; animation: blink 1s infinite; }
+  .status-dot.error { background: #e05555; }
+
+  /* ── MAIN CONTENT ── */
+  .main { display: flex; flex-direction: column; background: #f5f5f0; overflow: hidden; }
+  .main-header { background: #fff; border-bottom: 1px solid #e8e8e4; padding: 16px 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }
+  .session-title { font-size: 16px; font-weight: 600; color: #1a1a1a; }
+  .session-meta { font-size: 12px; color: #999; margin-top: 3px; }
+  .header-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 3px 9px; border-radius: 5px; font-weight: 500; }
+  .badge-green { background: #e0f5ec; color: #0a6b4a; }
+  .badge-purple { background: #eeecfc; color: #4a3fb0; }
+  .badge-amber { background: #fdf0dc; color: #9a6010; }
+  .badge-gray { background: #f0f0ec; color: #666; }
+
+  .stats-bar { background: #fff; border-bottom: 1px solid #e8e8e4; padding: 12px 24px; display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; flex-shrink: 0; }
+  .stat { background: #f8f8f5; border-radius: 8px; padding: 10px 12px; }
+  .stat-val { font-size: 20px; font-weight: 600; color: #1a1a1a; }
+  .stat-lbl { font-size: 11px; color: #999; margin-top: 1px; }
+
+  .tab-bar { background: #fff; border-bottom: 1px solid #e8e8e4; display: flex; padding: 0 24px; flex-shrink: 0; }
+  .tab { padding: 10px 14px; font-size: 12px; color: #999; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; transition: color 0.1s; }
+  .tab:hover { color: #555; }
+  .tab.active { color: #0f9b6e; border-bottom-color: #0f9b6e; }
+
+  .content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+  /* ── CONTENT SECTIONS ── */
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 12px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: #e8e8e4; }
+
+  .summary-box { background: #fff; border: 1px solid #e8e8e4; border-radius: 10px; padding: 16px; font-size: 14px; line-height: 1.75; color: #333; }
+  .summary-box p { margin-bottom: 10px; } .summary-box p:last-child { margin-bottom: 0; }
+
+  .speakers-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .speaker-chip { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 20px; background: #fff; border: 1px solid #e8e8e4; font-size: 12px; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+  .av0{background:#e0f5ec;color:#0a6b4a} .av1{background:#eeecfc;color:#4a3fb0} .av2{background:#fdf0dc;color:#9a6010} .av3{background:#fce8ec;color:#9a2030} .av4{background:#e0eef8;color:#1a5080}
+
+  .timeline { position: relative; padding-left: 20px; }
+  .timeline::before { content:''; position:absolute; left:7px; top:8px; bottom:8px; width:1px; background:#e0e0dc; }
+  .tl-item { position: relative; margin-bottom: 16px; padding-left: 16px; }
+  .tl-dot { position: absolute; left: -13px; top: 5px; width: 8px; height: 8px; border-radius: 50%; background: #0f9b6e; border: 1.5px solid #fff; }
+  .tl-time { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+  .tl-speaker { font-size: 11px; font-weight: 600; color: #0f9b6e; }
+  .tl-text { font-size: 13px; color: #333; line-height: 1.5; margin-top: 1px; }
+
+  .keywords-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+  .keyword { font-size: 12px; padding: 5px 11px; border-radius: 15px; background: #fff; border: 1px solid #e0e0dc; color: #555; }
+
+  .action-item { background: #fff; border: 1px solid #e8e8e4; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #333; margin-bottom: 6px; display: flex; gap: 10px; align-items: flex-start; }
+  .action-item::before { content: '→'; color: #0f9b6e; font-weight: 600; flex-shrink: 0; }
+
+  .transcript-line { font-size: 13px; line-height: 1.6; padding: 6px 0; border-bottom: 1px solid #f0f0ec; }
+  .transcript-line .spk-label { font-size: 11px; font-weight: 600; color: #0f9b6e; margin-right: 6px; }
+  .transcript-line .ts-label { font-size: 11px; color: #bbb; margin-right: 8px; }
+
+  /* ── EMPTY / PROCESSING STATES ── */
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: #aaa; }
+  .empty-icon { font-size: 48px; opacity: 0.4; }
+  .empty-title { font-size: 16px; font-weight: 500; color: #888; }
+  .empty-sub { font-size: 13px; color: #bbb; text-align: center; max-width: 280px; line-height: 1.5; }
+
+  .processing-banner { background: #fffbf0; border: 1px solid #e8cc80; border-radius: 10px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+  .spinner { width: 16px; height: 16px; border: 2px solid #e8cc80; border-top-color: #c89020; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; margin-top: 2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pb-text { font-size: 13px; color: #8a6010; line-height: 1.5; }
+  .pb-text strong { display: block; margin-bottom: 2px; color: #6a4808; }
+
+  /* ── RECORDING OVERLAY (timer) ── */
+  .rec-timer { position: fixed; bottom: 20px; right: 20px; background: #e05555; color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; display: none; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .rec-timer.visible { display: block; }
+
+  /* ── MOBILE MENU BUTTON ── */
+  .menu-btn { display: none; background: none; border: none; cursor: pointer; font-size: 20px; padding: 4px; color: #555; }
+  @media (max-width: 700px) { .menu-btn { display: block; } }
+</style>
+</head>
+<body>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  !! CHANGE THESE !! — Your config goes here
+  See SETUP.md for how to get each value
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<script>
+  const CONFIG = {
+    SUPABASE_URL:            "https://tboxzutkvypdowophees.supabase.co",       // From Supabase dashboard → Settings → API
+    SUPABASE_ANON_KEY:       "sb_secret_-jWbbhJGLzPsyU7Tp2RXJA_hOKTlEsQ",         // From Supabase dashboard → Settings → API
+    MODAL_PRESIGNED_URL:     "https://parshavkarani26--get-presigned-url.modal.run",   // From: modal deploy → copy URL
+    MODAL_TRIGGER_URL:       "https://parshavkarani26--trigger-processing.modal.run",  // From: modal deploy → copy URL
+  };
+</script>
+
+<div class="app">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="logo">hang<span>AI</span></div>
+      <div class="logo-sub">your memory, upgraded</div>
+    </div>
+
+    <button class="record-btn" id="recordBtn" onclick="toggleRecording()">
+      <div class="rec-dot"></div>
+      <span id="recordBtnText">Start recording</span>
+    </button>
+
+    <div class="section-label">Sessions</div>
+    <div class="sessions-list" id="sessionsList">
+      <div style="padding:20px 16px;font-size:13px;color:#bbb">Loading sessions...</div>
+    </div>
+  </div>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div class="main-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        <div>
+          <div class="session-title" id="sessionTitle">Select a session</div>
+          <div class="session-meta" id="sessionMeta">or start a new recording</div>
+        </div>
+      </div>
+      <div class="header-badges" id="headerBadges"></div>
+    </div>
+
+    <div class="stats-bar" id="statsBar" style="display:none">
+      <div class="stat"><div class="stat-val" id="statDuration">—</div><div class="stat-lbl">Duration</div></div>
+      <div class="stat"><div class="stat-val" id="statSpeakers">—</div><div class="stat-lbl">Speakers</div></div>
+      <div class="stat"><div class="stat-val" id="statWords">—</div><div class="stat-lbl">Words</div></div>
+      <div class="stat"><div class="stat-val" id="statMoments">—</div><div class="stat-lbl">Key moments</div></div>
+    </div>
+
+    <div class="tab-bar" id="tabBar" style="display:none">
+      <div class="tab active" onclick="switchTab('summary',this)">Summary</div>
+      <div class="tab" onclick="switchTab('transcript',this)">Transcript</div>
+      <div class="tab" onclick="switchTab('timeline',this)">Timeline</div>
+      <div class="tab" onclick="switchTab('insights',this)">Insights</div>
+    </div>
+
+    <div class="content" id="mainContent">
+      <div class="empty-state">
+        <div class="empty-icon">🎙️</div>
+        <div class="empty-title">Nothing here yet</div>
+        <div class="empty-sub">Hit "Start recording" before your next hangout. Come back to see everything.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="rec-timer" id="recTimer">● REC <span id="recTimerDisplay">0:00</span></div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SUPABASE INIT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STATE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let recorder       = null;
+let isRecording    = false;
+let sessionId      = null;
+let chunkNum       = 0;
+let recTimerInt    = null;
+let recSeconds     = 0;
+let pollInterval   = null;
+let currentSession = null;
+let currentTab     = 'summary';
+const AVATAR_COLORS = ['av0','av1','av2','av3','av4'];
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RECORDING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function toggleRecording() {
+  if (!isRecording) await startRecording();
+  else await stopRecording();
+}
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    sessionId = crypto.randomUUID();
+    chunkNum  = 0;
+
+    // Pick best supported audio format
+    const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus']
+      .find(m => MediaRecorder.isTypeSupported(m)) || '';
+
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : {});
+
+    recorder.ondataavailable = async (e) => {
+      if (e.data && e.data.size > 0) {
+        await uploadChunk(e.data, chunkNum++);
+      }
+    };
+
+    recorder.start(30000); // fire ondataavailable every 30 seconds
+    isRecording = true;
+
+    // UI
+    const btn = document.getElementById('recordBtn');
+    btn.classList.add('recording');
+    document.getElementById('recordBtnText').textContent = 'Recording... (tap to stop)';
+    document.getElementById('recTimer').classList.add('visible');
+
+    recSeconds = 0;
+    recTimerInt = setInterval(() => {
+      recSeconds++;
+      const m = Math.floor(recSeconds / 60);
+      const s = String(recSeconds % 60).padStart(2,'0');
+      document.getElementById('recTimerDisplay').textContent = `${m}:${s}`;
+    }, 1000);
+
+    // Ask for session name
+    const name = prompt('Name this session (e.g. "Bandra hangout"):') || `Session ${new Date().toLocaleDateString()}`;
+
+    // Pre-create session in Supabase as "pending"
+    await sb.from('sessions').insert({
+      id: sessionId,
+      name,
+      status: 'recording',
+      created_at: new Date().toISOString(),
+    });
+
+    loadSessions();
+
+  } catch (err) {
+    alert('Microphone access denied. Please allow mic access and try again.\n\n' + err.message);
+  }
+}
+
+async function uploadChunk(blob, num) {
+  try {
+    // 1. Get presigned URL from Modal
+    const res = await fetch(`${CONFIG.MODAL_PRESIGNED_URL}?session_id=${sessionId}&chunk_num=${num}`);
+    const { url } = await res.json();
+
+    // 2. Upload directly to R2
+    await fetch(url, {
+      method: 'PUT',
+      body: blob,
+      headers: { 'Content-Type': 'audio/webm' },
+    });
+
+    console.log(`Chunk ${num} uploaded`);
+  } catch (err) {
+    console.error(`Chunk ${num} upload failed:`, err);
+    // Non-fatal — continue recording, chunk will be missing in final assembly
+  }
+}
+
+async function stopRecording() {
+  if (!recorder) return;
+
+  // Stop recorder — fires one last ondataavailable
+  recorder.stop();
+  recorder.stream.getTracks().forEach(t => t.stop());
+  isRecording = false;
+  clearInterval(recTimerInt);
+
+  // UI
+  const btn = document.getElementById('recordBtn');
+  btn.classList.remove('recording');
+  document.getElementById('recordBtnText').textContent = 'Start recording';
+  document.getElementById('recTimer').classList.remove('visible');
+
+  // Wait a moment for the last chunk to upload
+  await new Promise(r => setTimeout(r, 3000));
+
+  // Tell Modal to start processing
+  try {
+    await fetch(`${CONFIG.MODAL_TRIGGER_URL}?session_id=${sessionId}&total_chunks=${chunkNum}`, {
+      method: 'POST',
+    });
+
+    // Update DB status to "processing"
+    await sb.from('sessions').update({ status: 'processing', total_chunks: chunkNum }).eq('id', sessionId);
+
+    alert(`Recording saved! ${chunkNum} chunks uploaded.\nProcessing will take ~20-30 min. Check back soon.`);
+    loadSessions();
+
+    // Auto-poll this session for updates
+    startPolling(sessionId);
+
+  } catch (err) {
+    alert('Failed to trigger processing: ' + err.message);
+  }
+
+  recorder  = null;
+  sessionId = null;
+  chunkNum  = 0;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// POLLING — refresh processing sessions every 30s
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function startPolling(sid) {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(async () => {
+    const { data } = await sb.from('sessions').select('status').eq('id', sid).single();
+    if (data?.status === 'completed' || data?.status === 'error') {
+      clearInterval(pollInterval);
+      loadSessions();
+      if (currentSession?.id === sid) loadSessionDetail(sid);
+    }
+  }, 30000);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SESSIONS LIST
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadSessions() {
+  const { data, error } = await sb
+    .from('sessions')
+    .select('id, name, status, duration_seconds, speakers, created_at')
+    .order('created_at', { ascending: false });
+
+  if (error) { console.error(error); return; }
+
+  const list = document.getElementById('sessionsList');
+  if (!data?.length) {
+    list.innerHTML = '<div style="padding:20px 16px;font-size:13px;color:#bbb">No sessions yet</div>';
+    return;
+  }
+
+  // Start polling any processing sessions
+  data.filter(s => s.status === 'processing').forEach(s => startPolling(s.id));
+
+  list.innerHTML = data.map(s => {
+    const date = new Date(s.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' });
+    const dur  = s.duration_seconds ? fmtDuration(s.duration_seconds) : '';
+    const spkCount = s.speakers?.length || '';
+    const isActive = currentSession?.id === s.id;
+    return `
+      <div class="session-item ${isActive ? 'active' : ''}" onclick="loadSessionDetail('${s.id}')">
+        <div class="session-name">${esc(s.name || 'Untitled session')}</div>
+        <div class="session-info">
+          <span class="status-dot ${s.status}"></span>
+          ${date}${dur ? ' · ' + dur : ''}${spkCount ? ' · ' + spkCount + ' speakers' : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SESSION DETAIL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadSessionDetail(sid) {
+  const { data: s, error } = await sb.from('sessions').select('*').eq('id', sid).single();
+  if (error) { console.error(error); return; }
+  currentSession = s;
+
+  // Update sidebar highlight
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active', el.onclick?.toString().includes(sid));
+  });
+
+  // Header
+  document.getElementById('sessionTitle').textContent = s.name || 'Untitled session';
+  const dateStr = new Date(s.created_at).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
+  document.getElementById('sessionMeta').textContent = dateStr + (s.duration_seconds ? ' · ' + fmtDuration(s.duration_seconds) : '');
+
+  // Badges
+  const badges = [];
+  if (s.language_mix) badges.push(`<span class="badge badge-purple">${esc(s.language_mix)}</span>`);
+  if (s.mood) badges.push(`<span class="badge badge-amber">${esc(s.mood)}</span>`);
+  const statusColors = { completed:'badge-green', processing:'badge-amber', error:'badge-gray', recording:'badge-gray' };
+  badges.push(`<span class="badge ${statusColors[s.status]||'badge-gray'}">${s.status}</span>`);
+  document.getElementById('headerBadges').innerHTML = badges.join('');
+
+  if (s.status === 'completed') {
+    // Stats
+    document.getElementById('statsBar').style.display = 'grid';
+    document.getElementById('tabBar').style.display = 'flex';
+    document.getElementById('statDuration').textContent  = s.duration_seconds ? fmtDuration(s.duration_seconds) : '—';
+    document.getElementById('statSpeakers').textContent  = s.speakers?.length || '—';
+    document.getElementById('statWords').textContent     = s.word_count?.toLocaleString() || '—';
+    document.getElementById('statMoments').textContent   = s.key_moments?.length || '—';
+    renderTab(s);
+  } else {
+    document.getElementById('statsBar').style.display = 'none';
+    document.getElementById('tabBar').style.display = 'none';
+    if (s.status === 'processing' || s.status === 'recording') {
+      document.getElementById('mainContent').innerHTML = `
+        <div class="processing-banner">
+          <div class="spinner"></div>
+          <div class="pb-text">
+            <strong>Processing your recording...</strong>
+            This takes 20–30 minutes. Grab a chai, come back later. This page checks automatically every 30 seconds.
+          </div>
+        </div>`;
+    } else {
+      document.getElementById('mainContent').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Processing error</div><div class="empty-sub">Something went wrong. Check Modal logs for details.</div></div>`;
+    }
+  }
+}
+
+function renderTab(s) {
+  const content = document.getElementById('mainContent');
+
+  // Highlight active tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.getAttribute('onclick')?.includes(`'${currentTab}'`)) t.classList.add('active');
+  });
+
+  if (currentTab === 'summary') {
+    const speakers = (s.speakers||[]).map((sp,i) => `
+      <div class="speaker-chip">
+        <div class="avatar ${AVATAR_COLORS[i%5]}">${sp.label?.charAt(8)||i+1}</div>
+        ${sp.label||sp.id} · ${sp.percentage}%
+      </div>`).join('');
+
+    content.innerHTML = `
+      <div class="section">
+        <div class="section-title">Speakers detected</div>
+        <div class="speakers-row">${speakers || '<span style="color:#bbb;font-size:13px">No speaker data</span>'}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">AI summary</div>
+        <div class="summary-box">${esc(s.summary||'No summary available').replace(/\n/g,'<br>')}</div>
+      </div>
+      ${s.action_items?.length ? `
+      <div class="section">
+        <div class="section-title">Action items</div>
+        ${(s.action_items||[]).map(a=>`<div class="action-item">${esc(a)}</div>`).join('')}
+      </div>` : ''}
+      <div class="section">
+        <div class="section-title">Keywords</div>
+        <div class="keywords-wrap">${(s.keywords||[]).map(k=>`<span class="keyword">${esc(k)}</span>`).join('')}</div>
+      </div>`;
+  }
+
+  else if (currentTab === 'transcript') {
+    if (!s.transcript) { content.innerHTML = '<div style="color:#bbb;font-size:13px;padding:20px 0">No transcript available</div>'; return; }
+    const lines = s.transcript.split('\n').map(line => {
+      const match = line.match(/^\[([^\|]+)\s*\|\s*(\d+:\d+)\]\s*(.*)$/);
+      if (match) {
+        return `<div class="transcript-line"><span class="ts-label">${match[2]}</span><span class="spk-label">${esc(match[1].trim())}</span>${esc(match[3])}</div>`;
+      }
+      return `<div class="transcript-line">${esc(line)}</div>`;
+    }).join('');
+    content.innerHTML = `<div class="section"><div class="section-title">Full transcript</div>${lines}</div>`;
+  }
+
+  else if (currentTab === 'timeline') {
+    const dotColors = ['#0f9b6e','#6b4fb0','#c08020','#c03020','#1a6090'];
+    const moments = (s.key_moments||[]).map((m,i) => {
+      const mins = Math.floor((m.time_seconds||0)/60);
+      const secs = String((m.time_seconds||0)%60).padStart(2,'0');
+      const color = dotColors[i%dotColors.length];
+      return `<div class="tl-item">
+        <div class="tl-dot" style="background:${color}"></div>
+        <div class="tl-time">${mins}:${secs}</div>
+        <div class="tl-speaker" style="color:${color}">${esc(m.speaker||'')}</div>
+        <div class="tl-text">${esc(m.description||'')}</div>
+      </div>`;
+    }).join('');
+    content.innerHTML = `<div class="section"><div class="section-title">Key moments</div><div class="timeline">${moments||'<span style="color:#bbb;font-size:13px">No key moments found</span>'}</div></div>`;
+  }
+
+  else if (currentTab === 'insights') {
+    const spkDescs = s.speaker_descriptions || {};
+    const descCards = Object.entries(spkDescs).map(([spk,desc],i) => `
+      <div class="action-item" style="flex-direction:column;gap:4px">
+        <span style="font-size:12px;font-weight:600;color:#0f9b6e">${esc(spk)}</span>
+        <span>${esc(desc)}</span>
+      </div>`).join('');
+
+    content.innerHTML = `
+      ${s.mood ? `<div class="section"><div class="section-title">Mood</div><div class="summary-box" style="font-size:14px">${esc(s.mood)}</div></div>` : ''}
+      ${s.language_mix ? `<div class="section"><div class="section-title">Language breakdown</div><div class="summary-box" style="font-size:14px">${esc(s.language_mix)}</div></div>` : ''}
+      ${descCards ? `<div class="section"><div class="section-title">Speaker profiles</div>${descCards}</div>` : ''}
+      ${s.action_items?.length ? `<div class="section"><div class="section-title">What people said they'd do</div>${(s.action_items||[]).map(a=>`<div class="action-item">${esc(a)}</div>`).join('')}</div>` : ''}`;
+  }
+}
+
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  if (currentSession) renderTab(currentSession);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// UTILS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function fmtDuration(sec) {
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+function esc(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// INIT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+loadSessions();
+</script>
+</body>
+</html>
