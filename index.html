@@ -22,10 +22,13 @@
   .logo-sub { font-size: 11px; color: #888; margin-top: 2px; }
 
   .record-btn { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 12px 16px 4px; padding: 11px 14px; border-radius: 10px; border: 1.5px solid #e0e0dc; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; color: #1a1a1a; transition: all 0.15s; }
-  .record-btn:hover { background: #f5f5f0; }
+  .record-btn:hover:not(:disabled) { background: #f5f5f0; }
+  .record-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .record-btn.recording { background: #fff5f5; border-color: #e05555; color: #c03030; }
+  .record-btn.uploading { background: #f0faf5; border-color: #0f9b6e; color: #0a6b4a; }
   .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: #ccc; flex-shrink: 0; transition: background 0.2s; }
   .record-btn.recording .rec-dot { background: #e05555; animation: blink 1s ease-in-out infinite; }
+  .record-btn.uploading .rec-dot { background: #0f9b6e; animation: blink 0.6s ease-in-out infinite; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
   .section-label { padding: 12px 16px 4px; font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
@@ -39,6 +42,7 @@
   .status-dot.completed { background: #0f9b6e; }
   .status-dot.processing { background: #e09020; animation: blink 1s infinite; }
   .status-dot.error { background: #e05555; }
+  .status-dot.recording { background: #e05555; animation: blink 1s infinite; }
 
   /* ── MAIN CONTENT ── */
   .main { display: flex; flex-direction: column; background: #f5f5f0; overflow: hidden; }
@@ -106,6 +110,14 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .pb-text { font-size: 13px; color: #8a6010; line-height: 1.5; }
   .pb-text strong { display: block; margin-bottom: 2px; color: #6a4808; }
+
+  /* ── UPLOAD PROGRESS BAR ── */
+  .upload-progress { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #fff; border: 1px solid #e8e8e4; border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 200; min-width: 260px; display: none; }
+  .upload-progress.visible { display: block; }
+  .up-label { font-size: 12px; color: #555; margin-bottom: 8px; font-weight: 500; }
+  .up-bar-track { background: #f0f0ec; border-radius: 4px; height: 6px; overflow: hidden; }
+  .up-bar-fill { height: 100%; background: #0f9b6e; border-radius: 4px; width: 0%; transition: width 0.3s ease; }
+  .up-size { font-size: 11px; color: #aaa; margin-top: 5px; }
 
   /* ── RECORDING OVERLAY (timer) ── */
   .rec-timer { position: fixed; bottom: 20px; right: 20px; background: #e05555; color: #fff; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; display: none; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
@@ -188,7 +200,15 @@
   </div>
 </div>
 
+<!-- Recording timer pill -->
 <div class="rec-timer" id="recTimer">● REC <span id="recTimerDisplay">0:00</span></div>
+
+<!-- Upload progress bar -->
+<div class="upload-progress" id="uploadProgress">
+  <div class="up-label" id="upLabel">Uploading recording...</div>
+  <div class="up-bar-track"><div class="up-bar-fill" id="upBarFill"></div></div>
+  <div class="up-size" id="upSize"></div>
+</div>
 
 <script>
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -199,15 +219,15 @@ const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // STATE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-let recorder       = null;
-let isRecording    = false;
-let sessionId      = null;
-let chunkNum       = 0;
-let recTimerInt    = null;
-let recSeconds     = 0;
-let pollInterval   = null;
-let currentSession = null;
-let currentTab     = 'summary';
+let recorder        = null;
+let isRecording     = false;
+let sessionId       = null;
+let recTimerInt     = null;
+let recSeconds      = 0;
+let pollInterval    = null;
+let currentSession  = null;
+let currentTab      = 'summary';
+let audioChunks     = [];          // ← ALL chunks buffered in memory
 const AVATAR_COLORS = ['av0','av1','av2','av3','av4'];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -220,47 +240,69 @@ async function toggleRecording() {
 
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    sessionId = crypto.randomUUID();
-    chunkNum  = 0;
+    // ── Enhanced audio constraints for better Whisper transcription ──
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl:  true,
+        sampleRate:       48000,
+        channelCount:     1,        // mono — Whisper doesn't need stereo, saves ~50% size
+      }
+    });
 
-    // Pick best supported audio format
-    const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus']
-      .find(m => MediaRecorder.isTypeSupported(m)) || '';
+    sessionId   = crypto.randomUUID();
+    audioChunks = [];               // reset buffer
 
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : {});
+    // Best supported format — opus gives best quality/size ratio for speech
+    const mimeType = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+    ].find(m => MediaRecorder.isTypeSupported(m)) || '';
 
-    recorder.ondataavailable = async (e) => {
+    recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 96000,    // 96kbps — sweet spot for speech quality vs size
+    });
+
+    // ── Collect every chunk into memory (NOT uploading per-chunk) ──
+    // WHY: WebM chunks 2+ are headerless continuation segments — unplayable standalone.
+    // Collecting all and merging preserves the init header in the final blob.
+    recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
-        await uploadChunk(e.data, chunkNum++);
+        audioChunks.push(e.data);
+        const totalMB = (audioChunks.reduce((a, c) => a + c.size, 0) / 1048576).toFixed(1);
+        console.log(`[HangAI] Chunk buffered: ${(e.data.size/1024).toFixed(0)} KB | Total: ${totalMB} MB`);
       }
     };
 
-    recorder.start(30000); // fire ondataavailable every 30 seconds
+    recorder.start(30000);  // fires every 30s for progress logging only
     isRecording = true;
 
-    // UI
+    // ── UI ──
     const btn = document.getElementById('recordBtn');
     btn.classList.add('recording');
     document.getElementById('recordBtnText').textContent = 'Recording... (tap to stop)';
     document.getElementById('recTimer').classList.add('visible');
 
-    recSeconds = 0;
+    recSeconds  = 0;
     recTimerInt = setInterval(() => {
       recSeconds++;
       const m = Math.floor(recSeconds / 60);
-      const s = String(recSeconds % 60).padStart(2,'0');
+      const s = String(recSeconds % 60).padStart(2, '0');
       document.getElementById('recTimerDisplay').textContent = `${m}:${s}`;
     }, 1000);
 
     // Ask for session name
-    const name = prompt('Name this session (e.g. "Bandra hangout"):') || `Session ${new Date().toLocaleDateString()}`;
+    const name = prompt('Name this session (e.g. "Bandra hangout"):')
+      || `Session ${new Date().toLocaleDateString()}`;
 
-    // Pre-create session in Supabase as "pending"
+    // Pre-create session in Supabase as "recording"
     await sb.from('sessions').insert({
-      id: sessionId,
+      id:         sessionId,
       name,
-      status: 'recording',
+      status:     'recording',
       created_at: new Date().toISOString(),
     });
 
@@ -271,61 +313,110 @@ async function startRecording() {
   }
 }
 
-async function uploadChunk(blob, num) {
-  try {
-    const url = `${CONFIG.MODAL_UPLOAD_URL}?session_id=${sessionId}&chunk_num=${num}`;
-    const res = await fetch(url, {
-      method: "POST",
-      body: blob,
-      headers: { "Content-Type": "audio/webm" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    console.log(`Chunk ${num} uploaded via Modal`);
-  } catch (err) {
-    console.error(`Chunk ${num} upload failed:`, err);
-  }
-}
-
 async function stopRecording() {
   if (!recorder) return;
 
-  // Stop recorder — fires one last ondataavailable
-  recorder.stop();
-  recorder.stream.getTracks().forEach(t => t.stop());
-  isRecording = false;
-  clearInterval(recTimerInt);
-
-  // UI
+  // ── Disable button immediately, update UI ──
   const btn = document.getElementById('recordBtn');
+  btn.disabled = true;
   btn.classList.remove('recording');
-  document.getElementById('recordBtnText').textContent = 'Start recording';
+  btn.classList.add('uploading');
+  document.getElementById('recordBtnText').textContent = 'Finalising...';
   document.getElementById('recTimer').classList.remove('visible');
+  clearInterval(recTimerInt);
+  isRecording = false;
 
-  // Wait a moment for the last chunk to upload
-  await new Promise(r => setTimeout(r, 3000));
+  // ── Wait for recorder to flush its final chunk ──
+  await new Promise((resolve) => {
+    recorder.onstop = resolve;
+    recorder.stop();
+  });
+  recorder.stream.getTracks().forEach(t => t.stop());
 
-  // Tell Modal to start processing
+  // ── Merge ALL chunks into ONE complete valid WebM blob ──
+  // This preserves the WebM init segment (codec info + metadata) from chunk 0,
+  // which is required for pydub / ffmpeg to decode the file correctly.
+  const mimeType = recorder.mimeType || 'audio/webm';
+  const fullBlob = new Blob(audioChunks, { type: mimeType });
+  const totalMB  = (fullBlob.size / 1048576).toFixed(2);
+  console.log(`[HangAI] Full recording assembled: ${totalMB} MB | type: ${mimeType}`);
+
+  // ── Show upload progress UI ──
+  const progressEl = document.getElementById('uploadProgress');
+  const barFill    = document.getElementById('upBarFill');
+  const upSize     = document.getElementById('upSize');
+  const upLabel    = document.getElementById('upLabel');
+  progressEl.classList.add('visible');
+  upSize.textContent  = `${totalMB} MB`;
+  upLabel.textContent = 'Uploading recording...';
+  barFill.style.width = '5%';
+
   try {
-    await fetch(`${CONFIG.MODAL_TRIGGER_URL}?session_id=${sessionId}&total_chunks=${chunkNum}`, {
-      method: 'POST',
+    // ── Upload the single combined file via XMLHttpRequest for progress ──
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = `${CONFIG.MODAL_UPLOAD_URL}?session_id=${sessionId}&chunk_num=0`;
+
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', mimeType);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 90) + 5; // 5–95%
+          barFill.style.width = pct + '%';
+          upLabel.textContent = `Uploading... ${pct}%`;
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          barFill.style.width = '95%';
+          resolve();
+        } else {
+          reject(new Error(`Upload failed: HTTP ${xhr.status} — ${xhr.responseText}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(fullBlob);
     });
 
-    // Update DB status to "processing"
-    await sb.from('sessions').update({ status: 'processing', total_chunks: chunkNum }).eq('id', sessionId);
+    console.log('[HangAI] Full audio uploaded successfully');
 
-    alert(`Recording saved! ${chunkNum} chunks uploaded.\nProcessing will take ~20-30 min. Check back soon.`);
+    // ── Trigger Modal processing with total_chunks=1 ──
+    barFill.style.width = '98%';
+    upLabel.textContent = 'Starting AI pipeline...';
+
+    await fetch(
+      `${CONFIG.MODAL_TRIGGER_URL}?session_id=${sessionId}&total_chunks=1`,
+      { method: 'POST' }
+    );
+
+    await sb.from('sessions')
+      .update({ status: 'processing', total_chunks: 1 })
+      .eq('id', sessionId);
+
+    barFill.style.width = '100%';
+    upLabel.textContent = '✅ Upload complete!';
+
+    setTimeout(() => progressEl.classList.remove('visible'), 2000);
+
     loadSessions();
-
-    // Auto-poll this session for updates
     startPolling(sessionId);
 
   } catch (err) {
-    alert('Failed to trigger processing: ' + err.message);
+    progressEl.classList.remove('visible');
+    alert('Upload failed: ' + err.message);
+    await sb.from('sessions').update({ status: 'error' }).eq('id', sessionId);
+  } finally {
+    // ── Full cleanup ──
+    audioChunks = [];
+    recorder    = null;
+    sessionId   = null;
+    btn.disabled = false;
+    btn.classList.remove('uploading');
+    document.getElementById('recordBtnText').textContent = 'Start recording';
   }
-
-  recorder  = null;
-  sessionId = null;
-  chunkNum  = 0;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -360,12 +451,12 @@ async function loadSessions() {
     return;
   }
 
-  // Start polling any processing sessions
+  // Auto-poll any sessions still processing
   data.filter(s => s.status === 'processing').forEach(s => startPolling(s.id));
 
   list.innerHTML = data.map(s => {
-    const date = new Date(s.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' });
-    const dur  = s.duration_seconds ? fmtDuration(s.duration_seconds) : '';
+    const date     = new Date(s.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' });
+    const dur      = s.duration_seconds ? fmtDuration(s.duration_seconds) : '';
     const spkCount = s.speakers?.length || '';
     const isActive = currentSession?.id === s.id;
     return `
@@ -389,34 +480,36 @@ async function loadSessionDetail(sid) {
 
   // Update sidebar highlight
   document.querySelectorAll('.session-item').forEach(el => {
-    el.classList.toggle('active', el.onclick?.toString().includes(sid));
+    el.classList.toggle('active', el.getAttribute('onclick')?.includes(sid));
   });
 
   // Header
   document.getElementById('sessionTitle').textContent = s.name || 'Untitled session';
-  const dateStr = new Date(s.created_at).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
-  document.getElementById('sessionMeta').textContent = dateStr + (s.duration_seconds ? ' · ' + fmtDuration(s.duration_seconds) : '');
+  const dateStr = new Date(s.created_at).toLocaleDateString('en-IN', {
+    weekday:'short', day:'numeric', month:'long', year:'numeric'
+  });
+  document.getElementById('sessionMeta').textContent =
+    dateStr + (s.duration_seconds ? ' · ' + fmtDuration(s.duration_seconds) : '');
 
   // Badges
   const badges = [];
   if (s.language_mix) badges.push(`<span class="badge badge-purple">${esc(s.language_mix)}</span>`);
-  if (s.mood) badges.push(`<span class="badge badge-amber">${esc(s.mood)}</span>`);
+  if (s.mood)         badges.push(`<span class="badge badge-amber">${esc(s.mood)}</span>`);
   const statusColors = { completed:'badge-green', processing:'badge-amber', error:'badge-gray', recording:'badge-gray' };
   badges.push(`<span class="badge ${statusColors[s.status]||'badge-gray'}">${s.status}</span>`);
   document.getElementById('headerBadges').innerHTML = badges.join('');
 
   if (s.status === 'completed') {
-    // Stats
     document.getElementById('statsBar').style.display = 'grid';
-    document.getElementById('tabBar').style.display = 'flex';
-    document.getElementById('statDuration').textContent  = s.duration_seconds ? fmtDuration(s.duration_seconds) : '—';
-    document.getElementById('statSpeakers').textContent  = s.speakers?.length || '—';
-    document.getElementById('statWords').textContent     = s.word_count?.toLocaleString() || '—';
-    document.getElementById('statMoments').textContent   = s.key_moments?.length || '—';
+    document.getElementById('tabBar').style.display   = 'flex';
+    document.getElementById('statDuration').textContent = s.duration_seconds ? fmtDuration(s.duration_seconds) : '—';
+    document.getElementById('statSpeakers').textContent = s.speakers?.length || '—';
+    document.getElementById('statWords').textContent    = s.word_count?.toLocaleString() || '—';
+    document.getElementById('statMoments').textContent  = s.key_moments?.length || '—';
     renderTab(s);
   } else {
     document.getElementById('statsBar').style.display = 'none';
-    document.getElementById('tabBar').style.display = 'none';
+    document.getElementById('tabBar').style.display   = 'none';
     if (s.status === 'processing' || s.status === 'recording') {
       document.getElementById('mainContent').innerHTML = `
         <div class="processing-banner">
@@ -427,7 +520,12 @@ async function loadSessionDetail(sid) {
           </div>
         </div>`;
     } else {
-      document.getElementById('mainContent').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Processing error</div><div class="empty-sub">Something went wrong. Check Modal logs for details.</div></div>`;
+      document.getElementById('mainContent').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <div class="empty-title">Processing error</div>
+          <div class="empty-sub">Something went wrong. Check Modal logs for details.</div>
+        </div>`;
     }
   }
 }
@@ -435,17 +533,15 @@ async function loadSessionDetail(sid) {
 function renderTab(s) {
   const content = document.getElementById('mainContent');
 
-  // Highlight active tab
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => {
-    if (t.getAttribute('onclick')?.includes(`'${currentTab}'`)) t.classList.add('active');
+    t.classList.toggle('active', t.getAttribute('onclick')?.includes(`'${currentTab}'`));
   });
 
   if (currentTab === 'summary') {
-    const speakers = (s.speakers||[]).map((sp,i) => `
+    const speakers = (s.speakers || []).map((sp, i) => `
       <div class="speaker-chip">
-        <div class="avatar ${AVATAR_COLORS[i%5]}">${sp.label?.charAt(8)||i+1}</div>
-        ${sp.label||sp.id} · ${sp.percentage}%
+        <div class="avatar ${AVATAR_COLORS[i % 5]}">${sp.label?.charAt(8) || i + 1}</div>
+        ${esc(sp.label || sp.id)} · ${sp.percentage}%
       </div>`).join('');
 
     content.innerHTML = `
@@ -455,25 +551,32 @@ function renderTab(s) {
       </div>
       <div class="section">
         <div class="section-title">AI summary</div>
-        <div class="summary-box">${esc(s.summary||'No summary available').replace(/\n/g,'<br>')}</div>
+        <div class="summary-box">${esc(s.summary || 'No summary available').replace(/\n/g,'<br>')}</div>
       </div>
       ${s.action_items?.length ? `
       <div class="section">
         <div class="section-title">Action items</div>
-        ${(s.action_items||[]).map(a=>`<div class="action-item">${esc(a)}</div>`).join('')}
+        ${(s.action_items || []).map(a => `<div class="action-item">${esc(a)}</div>`).join('')}
       </div>` : ''}
       <div class="section">
         <div class="section-title">Keywords</div>
-        <div class="keywords-wrap">${(s.keywords||[]).map(k=>`<span class="keyword">${esc(k)}</span>`).join('')}</div>
+        <div class="keywords-wrap">${(s.keywords || []).map(k => `<span class="keyword">${esc(k)}</span>`).join('')}</div>
       </div>`;
   }
 
   else if (currentTab === 'transcript') {
-    if (!s.transcript) { content.innerHTML = '<div style="color:#bbb;font-size:13px;padding:20px 0">No transcript available</div>'; return; }
+    if (!s.transcript) {
+      content.innerHTML = '<div style="color:#bbb;font-size:13px;padding:20px 0">No transcript available</div>';
+      return;
+    }
     const lines = s.transcript.split('\n').map(line => {
       const match = line.match(/^\[([^\|]+)\s*\|\s*(\d+:\d+)\]\s*(.*)$/);
       if (match) {
-        return `<div class="transcript-line"><span class="ts-label">${match[2]}</span><span class="spk-label">${esc(match[1].trim())}</span>${esc(match[3])}</div>`;
+        return `<div class="transcript-line">
+          <span class="ts-label">${match[2]}</span>
+          <span class="spk-label">${esc(match[1].trim())}</span>
+          ${esc(match[3])}
+        </div>`;
       }
       return `<div class="transcript-line">${esc(line)}</div>`;
     }).join('');
@@ -482,23 +585,27 @@ function renderTab(s) {
 
   else if (currentTab === 'timeline') {
     const dotColors = ['#0f9b6e','#6b4fb0','#c08020','#c03020','#1a6090'];
-    const moments = (s.key_moments||[]).map((m,i) => {
-      const mins = Math.floor((m.time_seconds||0)/60);
-      const secs = String((m.time_seconds||0)%60).padStart(2,'0');
-      const color = dotColors[i%dotColors.length];
+    const moments = (s.key_moments || []).map((m, i) => {
+      const mins  = Math.floor((m.time_seconds || 0) / 60);
+      const secs  = String((m.time_seconds || 0) % 60).padStart(2, '0');
+      const color = dotColors[i % dotColors.length];
       return `<div class="tl-item">
         <div class="tl-dot" style="background:${color}"></div>
         <div class="tl-time">${mins}:${secs}</div>
-        <div class="tl-speaker" style="color:${color}">${esc(m.speaker||'')}</div>
-        <div class="tl-text">${esc(m.description||'')}</div>
+        <div class="tl-speaker" style="color:${color}">${esc(m.speaker || '')}</div>
+        <div class="tl-text">${esc(m.description || '')}</div>
       </div>`;
     }).join('');
-    content.innerHTML = `<div class="section"><div class="section-title">Key moments</div><div class="timeline">${moments||'<span style="color:#bbb;font-size:13px">No key moments found</span>'}</div></div>`;
+    content.innerHTML = `
+      <div class="section">
+        <div class="section-title">Key moments</div>
+        <div class="timeline">${moments || '<span style="color:#bbb;font-size:13px">No key moments found</span>'}</div>
+      </div>`;
   }
 
   else if (currentTab === 'insights') {
-    const spkDescs = s.speaker_descriptions || {};
-    const descCards = Object.entries(spkDescs).map(([spk,desc],i) => `
+    const spkDescs  = s.speaker_descriptions || {};
+    const descCards = Object.entries(spkDescs).map(([spk, desc], i) => `
       <div class="action-item" style="flex-direction:column;gap:4px">
         <span style="font-size:12px;font-weight:600;color:#0f9b6e">${esc(spk)}</span>
         <span>${esc(desc)}</span>
@@ -508,7 +615,11 @@ function renderTab(s) {
       ${s.mood ? `<div class="section"><div class="section-title">Mood</div><div class="summary-box" style="font-size:14px">${esc(s.mood)}</div></div>` : ''}
       ${s.language_mix ? `<div class="section"><div class="section-title">Language breakdown</div><div class="summary-box" style="font-size:14px">${esc(s.language_mix)}</div></div>` : ''}
       ${descCards ? `<div class="section"><div class="section-title">Speaker profiles</div>${descCards}</div>` : ''}
-      ${s.action_items?.length ? `<div class="section"><div class="section-title">What people said they'd do</div>${(s.action_items||[]).map(a=>`<div class="action-item">${esc(a)}</div>`).join('')}</div>` : ''}`;
+      ${s.action_items?.length ? `
+        <div class="section">
+          <div class="section-title">What people said they'd do</div>
+          ${(s.action_items || []).map(a => `<div class="action-item">${esc(a)}</div>`).join('')}
+        </div>` : ''}`;
   }
 }
 
@@ -523,13 +634,20 @@ function switchTab(tab, el) {
 // UTILS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function fmtDuration(sec) {
-  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
   if (h) return `${h}h ${m}m`;
   if (m) return `${m}m ${s}s`;
   return `${s}s`;
 }
+
 function esc(str) {
-  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
