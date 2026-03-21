@@ -125,8 +125,8 @@
 <script>
   const CONFIG = {
     SUPABASE_URL:            "https://tboxzutkvypdowophees.supabase.co",       // From Supabase dashboard → Settings → API
-    SUPABASE_ANON_KEY:       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRib3h6dXRrdnlwZG93b3BoZWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjExNzIsImV4cCI6MjA4OTU5NzE3Mn0.T6E-jUkHlrRlqZbA411CFSQoq4whlrdTayJ0fA0FPmc",         // From Supabase dashboard → Settings → API
-    MODAL_PRESIGNED_URL:     "https://parshavkarani26--get-presigned-url.modal.run",   // From: modal deploy → copy URL
+    SUPABASE_ANON_KEY:       "sb_secret_-jWbbhJGLzPsyU7Tp2RXJA_hOKTlEsQ",         // From Supabase dashboard → Settings → API
+    MODAL_UPLOAD_URL:     "https://parshavkarani26--get-presigned-url.modal.run",   // From: modal deploy → copy URL
     MODAL_TRIGGER_URL:       "https://parshavkarani26--trigger-processing.modal.run",  // From: modal deploy → copy URL
   };
 </script>
@@ -273,21 +273,16 @@ async function startRecording() {
 
 async function uploadChunk(blob, num) {
   try {
-    // 1. Get presigned URL from Modal
-    const res = await fetch(`${CONFIG.MODAL_PRESIGNED_URL}?session_id=${sessionId}&chunk_num=${num}`);
-    const { url } = await res.json();
-
-    // 2. Upload directly to R2
-    await fetch(url, {
-      method: 'PUT',
+    const url = `${CONFIG.MODAL_UPLOAD_URL}?session_id=${sessionId}&chunk_num=${num}`;
+    const res = await fetch(url, {
+      method: "POST",
       body: blob,
-      headers: { 'Content-Type': 'audio/webm' },
+      headers: { "Content-Type": "audio/webm" },
     });
-
-    console.log(`Chunk ${num} uploaded`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    console.log(`Chunk ${num} uploaded via Modal`);
   } catch (err) {
     console.error(`Chunk ${num} upload failed:`, err);
-    // Non-fatal — continue recording, chunk will be missing in final assembly
   }
 }
 
