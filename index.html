@@ -30,11 +30,18 @@
 
   .section-label { padding: 12px 16px 4px; font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
   .sessions-list { flex: 1; overflow-y: auto; }
-  .session-item { padding: 10px 16px; cursor: pointer; border-left: 2.5px solid transparent; transition: all 0.1s; }
+
+  /* ── SESSION ITEM with delete ── */
+  .session-item { padding: 10px 16px; cursor: pointer; border-left: 2.5px solid transparent; transition: all 0.1s; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
   .session-item:hover { background: #f8f8f5; }
   .session-item.active { background: #f0faf5; border-left-color: #0f9b6e; }
+  .session-item-body { flex: 1; min-width: 0; }
   .session-name { font-size: 13px; font-weight: 500; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .session-info { font-size: 11px; color: #999; margin-top: 2px; }
+  .delete-btn { flex-shrink: 0; background: none; border: none; cursor: pointer; color: #ccc; font-size: 14px; padding: 2px 4px; border-radius: 4px; line-height: 1; opacity: 0; transition: all 0.15s; margin-top: 1px; }
+  .session-item:hover .delete-btn { opacity: 1; }
+  .delete-btn:hover { color: #e05555; background: #fff0f0; }
+
   .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   .status-dot.completed { background: #0f9b6e; }
   .status-dot.processing { background: #e09020; animation: blink 1s infinite; }
@@ -68,9 +75,8 @@
   .section-title { font-size: 11px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
   .section-title::after { content: ''; flex: 1; height: 1px; background: #e8e8e4; }
 
-  /* ── SPEAKER BARS ── */
-  .speaker-list { display: flex; flex-direction: column; gap: 12px; }
-  .speaker-row-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
+  .speaker-list { display: flex; flex-direction: column; gap: 10px; }
+  .speaker-row-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
   .speaker-name-wrap { display: flex; align-items: center; gap: 9px; }
   .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
   .av0{background:#e0f5ec;color:#0a6b4a} .av1{background:#eeecfc;color:#4a3fb0} .av2{background:#fdf0dc;color:#9a6010} .av3{background:#fce8ec;color:#9a2030} .av4{background:#e0eef8;color:#1a5080}
@@ -82,33 +88,27 @@
   .bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(.4,0,.2,1); }
   .bar-fill.c0{background:#0f9b6e} .bar-fill.c1{background:#6b4fb0} .bar-fill.c2{background:#c08020} .bar-fill.c3{background:#c03020} .bar-fill.c4{background:#1a6090}
 
-  /* ── INFO CARDS ── */
   .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
   @media(max-width:900px){.info-grid{grid-template-columns:1fr;}}
   .info-card { background: #fff; border: 1px solid #e8e8e4; border-radius: 10px; padding: 13px 15px; }
   .info-card-label { font-size: 10px; font-weight: 700; color: #bbb; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; }
   .info-card-value { font-size: 14px; color: #333; line-height: 1.5; }
 
-  /* ── SUMMARY ── */
   .summary-box { background: #fff; border: 1px solid #e8e8e4; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 1.8; color: #333; }
   .summary-box p { margin-bottom: 10px; } .summary-box p:last-child { margin-bottom: 0; }
 
-  /* ── ACTIONS ── */
   .action-list { display: flex; flex-direction: column; gap: 6px; }
   .action-item { background: #fff; border: 1px solid #e8e8e4; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #333; display: flex; gap: 10px; align-items: flex-start; }
   .action-arrow { color: #0f9b6e; font-weight: 700; flex-shrink: 0; }
 
-  /* ── KEYWORDS ── */
   .keywords-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
   .keyword { font-size: 12px; padding: 5px 11px; border-radius: 15px; background: #fff; border: 1px solid #e0e0dc; color: #555; }
 
-  /* ── TRANSCRIPT ── */
   .transcript-line { font-size: 13px; line-height: 1.6; padding: 7px 0; border-bottom: 1px solid #f0f0ec; }
   .transcript-line:last-child { border-bottom: none; }
   .spk-label { font-size: 11px; font-weight: 600; color: #0f9b6e; margin-right: 6px; }
   .ts-label  { font-size: 11px; color: #bbb; margin-right: 8px; }
 
-  /* ── TIMELINE ── */
   .timeline { position: relative; padding-left: 20px; }
   .timeline::before { content:''; position:absolute; left:7px; top:8px; bottom:8px; width:1px; background:#e0e0dc; }
   .tl-item { position: relative; margin-bottom: 18px; padding-left: 16px; }
@@ -117,7 +117,6 @@
   .tl-speaker { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
   .tl-text { font-size: 13px; color: #333; line-height: 1.5; }
 
-  /* ── EMPTY / PROCESSING ── */
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; }
   .empty-icon  { font-size: 48px; opacity: 0.4; }
   .empty-title { font-size: 16px; font-weight: 500; color: #888; }
@@ -129,8 +128,8 @@
   .pb-text { font-size: 13px; color: #8a6010; line-height: 1.5; }
   .pb-text strong { display: block; margin-bottom: 2px; color: #6a4808; font-size: 14px; }
 
-  /* ── UPLOAD PROGRESS ── */
-  .upload-progress { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #fff; border: 1px solid #e8e8e4; border-radius: 12px; padding: 14px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); z-index: 200; min-width: 280px; display: none; }
+  /* ── PROCESSING STATUS ── */
+  .upload-progress { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #fff; border: 1px solid #e8e8e4; border-radius: 12px; padding: 14px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); z-index: 200; min-width: 300px; display: none; }
   .upload-progress.visible { display: block; }
   .up-label { font-size: 13px; color: #333; margin-bottom: 10px; font-weight: 500; }
   .up-bar-track { background: #f0f0ec; border-radius: 4px; height: 6px; overflow: hidden; }
@@ -148,10 +147,10 @@
 
 <script>
   const CONFIG = {
-    SUPABASE_URL:            "https://tboxzutkvypdowophees.supabase.co",       // From Supabase dashboard → Settings → API
-    SUPABASE_ANON_KEY:       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRib3h6dXRrdnlwZG93b3BoZWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjExNzIsImV4cCI6MjA4OTU5NzE3Mn0.T6E-jUkHlrRlqZbA411CFSQoq4whlrdTayJ0fA0FPmc",         // From Supabase dashboard → Settings → API
-    MODAL_UPLOAD_URL:     "https://parshavkarani26--upload-chunk.modal.run",   // From: modal deploy → copy URL
-    MODAL_TRIGGER_URL:       "https://parshavkarani26--trigger-processing.modal.run",  // From: modal deploy → copy URL
+    SUPABASE_URL:      "https://tboxzutkvypdowophees.supabase.co",
+    SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRib3h6dXRrdnlwZG93b3BoZWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjExNzIsImV4cCI6MjA4OTU5NzE3Mn0.T6E-jUkHlrRlqZbA411CFSQoq4whlrdTayJ0fA0FPmc",
+    MODAL_UPLOAD_URL:  "https://parshavkarani26--upload-chunk.modal.run",
+    MODAL_TRIGGER_URL: "https://parshavkarani26--trigger-processing.modal.run",
   };
 </script>
 
@@ -209,7 +208,7 @@
 
 <div class="rec-timer" id="recTimer">● REC <span id="recTimerDisplay">0:00</span></div>
 <div class="upload-progress" id="uploadProgress">
-  <div class="up-label" id="upLabel">Uploading recording...</div>
+  <div class="up-label" id="upLabel">Processing audio...</div>
   <div class="up-bar-track"><div class="up-bar-fill" id="upBarFill"></div></div>
   <div class="up-size" id="upSize"></div>
 </div>
@@ -228,7 +227,120 @@ let currentTab     = 'summary';
 const BAR_COLORS   = ['c0','c1','c2','c3','c4'];
 const AVATAR_CLS   = ['av0','av1','av2','av3','av4'];
 
-// ─── RECORDING ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// AUDIO PROCESSING — Web Audio API pipeline
+// Converts WebM blob → 16kHz mono WAV with:
+//   • High-pass filter  @ 80Hz  (kills rumble / mic handling noise)
+//   • Low-pass filter   @ 8kHz  (kills high-freq hiss, speech tops out ~4kHz)
+//   • Dynamics compressor       (normalises quiet speakers vs loud ones)
+// Result: clean 16kHz WAV — exactly what Whisper was trained on
+// ═══════════════════════════════════════════════════════
+async function processAudioBlob(rawBlob, onProgress) {
+  onProgress('Decoding audio...', 10);
+
+  const arrayBuffer = await rawBlob.arrayBuffer();
+
+  // Decode at native rate first
+  const audioCtx = new AudioContext();
+  const decoded   = await audioCtx.decodeAudioData(arrayBuffer);
+
+  onProgress('Applying audio filters...', 30);
+
+  // ── Resample to 16000 Hz (Whisper's native rate) ──
+  const TARGET_SR    = 16000;
+  const duration     = decoded.duration;
+  const outputFrames = Math.ceil(duration * TARGET_SR);
+
+  const offlineCtx = new OfflineAudioContext(1, outputFrames, TARGET_SR);
+
+  // Source
+  const source = offlineCtx.createBufferSource();
+  source.buffer = decoded;
+
+  // High-pass @ 80Hz — removes low rumble, desk vibrations, handling noise
+  const hpf = offlineCtx.createBiquadFilter();
+  hpf.type            = 'highpass';
+  hpf.frequency.value = 80;
+  hpf.Q.value         = 0.7;
+
+  // Low-pass @ 8000Hz — removes hiss above speech range
+  const lpf = offlineCtx.createBiquadFilter();
+  lpf.type            = 'lowpass';
+  lpf.frequency.value = 8000;
+  lpf.Q.value         = 0.7;
+
+  // Dynamics compressor — evening out volume, brings up quiet speech
+  const compressor = offlineCtx.createDynamicsCompressor();
+  compressor.threshold.value = -24;   // start compressing at -24dBFS
+  compressor.knee.value      = 8;     // soft knee
+  compressor.ratio.value     = 4;     // 4:1 compression ratio
+  compressor.attack.value    = 0.003; // 3ms attack
+  compressor.release.value   = 0.25;  // 250ms release
+
+  // Chain: source → HPF → LPF → compressor → output
+  source.connect(hpf);
+  hpf.connect(lpf);
+  lpf.connect(compressor);
+  compressor.connect(offlineCtx.destination);
+  source.start(0);
+
+  onProgress('Rendering clean audio...', 55);
+  const rendered = await offlineCtx.startRendering();
+  await audioCtx.close();
+
+  onProgress('Encoding WAV...', 75);
+
+  // ── Encode AudioBuffer → WAV ──
+  const wav = audioBufferToWav(rendered);
+
+  onProgress('WAV ready, uploading...', 85);
+  return new Blob([wav], { type: 'audio/wav' });
+}
+
+// WAV encoder — writes PCM16 mono WAV from an AudioBuffer
+function audioBufferToWav(buffer) {
+  const numChannels = 1;   // always mono
+  const sampleRate  = buffer.sampleRate;
+  const pcmData     = buffer.getChannelData(0); // mono: channel 0 only
+  const numSamples  = pcmData.length;
+  const byteLength  = 44 + numSamples * 2;       // header + 16-bit samples
+
+  const out  = new ArrayBuffer(byteLength);
+  const view = new DataView(out);
+
+  // RIFF header
+  writeStr(view, 0,  'RIFF');
+  view.setUint32(4,  byteLength - 8,    true);
+  writeStr(view, 8,  'WAVE');
+  writeStr(view, 12, 'fmt ');
+  view.setUint32(16, 16,                true); // chunk size
+  view.setUint16(20, 1,                 true); // PCM
+  view.setUint16(22, numChannels,       true);
+  view.setUint32(24, sampleRate,        true);
+  view.setUint32(28, sampleRate * 2,    true); // byte rate (16-bit mono)
+  view.setUint16(32, 2,                 true); // block align
+  view.setUint16(34, 16,                true); // bits per sample
+  writeStr(view, 36, 'data');
+  view.setUint32(40, numSamples * 2,    true);
+
+  // PCM samples — clamp float32 → int16
+  let offset = 44;
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, pcmData[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    offset += 2;
+  }
+
+  return out;
+}
+
+function writeStr(view, offset, str) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+// ═══════════════════════════════════════════════════════
+// RECORDING
+// ═══════════════════════════════════════════════════════
 async function toggleRecording() {
   if (!isRecording) await startRecording();
   else              await stopRecording();
@@ -253,16 +365,11 @@ async function startRecording() {
 
     recorder = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
-      audioBitsPerSecond: 96000,
+      audioBitsPerSecond: 128000,  // higher capture quality; we'll downsample anyway
     });
 
-    // ─── THE KEY FIX ───
-    // NO timeslice argument → ondataavailable fires exactly ONCE on stop().
-    // This produces a single self-contained WebM with the init header intact.
-    // start(30000) was creating headerless continuation segments — chunks 2+
-    // were undecodable by ffmpeg/pydub. This is why Backblaze had broken files.
+    // No timeslice → single blob on stop
     recorder.start();
-
     isRecording = true;
 
     document.getElementById('recordBtn').classList.add('recording');
@@ -297,59 +404,68 @@ async function stopRecording() {
   btn.disabled = true;
   btn.classList.remove('recording');
   btn.classList.add('uploading');
-  document.getElementById('recordBtnText').textContent = 'Finalising...';
+  document.getElementById('recordBtnText').textContent = 'Processing audio...';
   document.getElementById('recTimer').classList.remove('visible');
   clearInterval(recTimerInt);
   isRecording = false;
 
-  // Wait for the ONE blob that fires on stop
-  const blob = await new Promise((resolve) => {
+  // Wait for the single ondataavailable blob
+  const rawBlob = await new Promise((resolve) => {
     recorder.ondataavailable = (e) => resolve(e.data);
     recorder.stop();
   });
   recorder.stream.getTracks().forEach(t => t.stop());
 
-  const mimeType = recorder.mimeType || 'audio/webm';
-  const totalMB  = (blob.size / 1048576).toFixed(2);
-  console.log(`[HangAI] Blob: ${totalMB} MB | ${mimeType}`);
+  console.log(`[HangAI] Raw blob: ${(rawBlob.size/1048576).toFixed(2)} MB | ${recorder.mimeType}`);
 
-  if (blob.size < 1000) {
+  if (rawBlob.size < 1000) {
     alert('Recording too short or mic produced no audio. Try again.');
     cleanup(btn); return;
   }
 
+  // ── Show progress UI ──
   const progressEl = document.getElementById('uploadProgress');
   const barFill    = document.getElementById('upBarFill');
+  const upLabel    = document.getElementById('upLabel');
+  const upSize     = document.getElementById('upSize');
   progressEl.classList.add('visible');
-  document.getElementById('upSize').textContent  = `${totalMB} MB`;
-  document.getElementById('upLabel').textContent = 'Uploading recording...';
-  barFill.style.width = '5%';
+
+  const setProgress = (label, pct) => {
+    upLabel.textContent = label;
+    barFill.style.width = pct + '%';
+  };
 
   try {
+    // ── Process audio through Web Audio API pipeline ──
+    const wavBlob = await processAudioBlob(rawBlob, setProgress);
+    const totalMB = (wavBlob.size / 1048576).toFixed(2);
+    upSize.textContent = `${totalMB} MB WAV (16kHz mono)`;
+    console.log(`[HangAI] Processed WAV: ${totalMB} MB`);
+
+    // ── Upload via XHR for progress ──
     await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${CONFIG.MODAL_UPLOAD_URL}?session_id=${sessionId}&chunk_num=0`, true);
-      xhr.setRequestHeader('Content-Type', mimeType);
+      xhr.setRequestHeader('Content-Type', 'audio/wav');
+
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          const pct = Math.round((e.loaded/e.total)*90)+5;
-          barFill.style.width = pct+'%';
-          document.getElementById('upLabel').textContent = `Uploading... ${pct}%`;
+          const pct = Math.round((e.loaded/e.total)*12) + 87; // 87–99%
+          setProgress(`Uploading... ${Math.round((e.loaded/e.total)*100)}%`, pct);
         }
       };
-      xhr.onload  = () => xhr.status>=200&&xhr.status<300 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
-      xhr.onerror = () => reject(new Error('Network error'));
-      xhr.send(blob);
+
+      xhr.onload  = () => xhr.status>=200&&xhr.status<300 ? resolve() : reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText}`));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(wavBlob);
     });
 
-    barFill.style.width = '95%';
-    document.getElementById('upLabel').textContent = 'Starting AI pipeline...';
+    setProgress('Starting AI pipeline...', 98);
 
     await fetch(`${CONFIG.MODAL_TRIGGER_URL}?session_id=${sessionId}&total_chunks=1`, { method:'POST' });
     await sb.from('sessions').update({ status:'processing', total_chunks:1 }).eq('id', sessionId);
 
-    barFill.style.width = '100%';
-    document.getElementById('upLabel').textContent = '✅ Done! Processing starting...';
+    setProgress('✅ Done! Whisper is on it...', 100);
     setTimeout(() => progressEl.classList.remove('visible'), 2500);
 
     loadSessions();
@@ -357,7 +473,7 @@ async function stopRecording() {
 
   } catch (err) {
     progressEl.classList.remove('visible');
-    alert('Upload failed: ' + err.message);
+    alert('Failed: ' + err.message);
     await sb.from('sessions').update({ status:'error' }).eq('id', sessionId);
   } finally {
     cleanup(btn);
@@ -365,14 +481,41 @@ async function stopRecording() {
 }
 
 function cleanup(btn) {
-  recorder  = null;
-  sessionId = null;
+  recorder = null; sessionId = null;
   btn.disabled = false;
   btn.classList.remove('uploading');
   document.getElementById('recordBtnText').textContent = 'Start recording';
 }
 
-// ─── POLLING ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// DELETE SESSION
+// ═══════════════════════════════════════════════════════
+async function deleteSession(e, sid) {
+  e.stopPropagation(); // don't trigger loadSessionDetail
+  if (!confirm('Delete this session? This cannot be undone.')) return;
+
+  await sb.from('sessions').delete().eq('id', sid);
+
+  if (currentSession?.id === sid) {
+    currentSession = null;
+    document.getElementById('sessionTitle').textContent = 'Select a session';
+    document.getElementById('sessionMeta').textContent  = 'or start a new recording';
+    document.getElementById('headerBadges').innerHTML   = '';
+    document.getElementById('statsBar').style.display   = 'none';
+    document.getElementById('tabBar').style.display     = 'none';
+    document.getElementById('mainContent').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🎙️</div>
+        <div class="empty-title">Nothing here yet</div>
+        <div class="empty-sub">Hit "Start recording" before your next hangout.</div>
+      </div>`;
+  }
+  loadSessions();
+}
+
+// ═══════════════════════════════════════════════════════
+// POLLING
+// ═══════════════════════════════════════════════════════
 function startPolling(sid) {
   if (pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(async () => {
@@ -385,7 +528,9 @@ function startPolling(sid) {
   }, 30000);
 }
 
-// ─── SESSIONS LIST ───────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// SESSIONS LIST
+// ═══════════════════════════════════════════════════════
 async function loadSessions() {
   const { data, error } = await sb
     .from('sessions')
@@ -408,16 +553,21 @@ async function loadSessions() {
     const spkCount = s.speakers?.length || '';
     return `
       <div class="session-item ${currentSession?.id===s.id?'active':''}" onclick="loadSessionDetail('${s.id}')">
-        <div class="session-name">${esc(s.name||'Untitled session')}</div>
-        <div class="session-info">
-          <span class="status-dot ${s.status}"></span>
-          ${date}${dur?' · '+dur:''}${spkCount?' · '+spkCount+' speakers':''}
+        <div class="session-item-body">
+          <div class="session-name">${esc(s.name||'Untitled session')}</div>
+          <div class="session-info">
+            <span class="status-dot ${s.status}"></span>
+            ${date}${dur?' · '+dur:''}${spkCount?' · '+spkCount+' spk':''}
+          </div>
         </div>
+        <button class="delete-btn" onclick="deleteSession(event,'${s.id}')" title="Delete session">✕</button>
       </div>`;
   }).join('');
 }
 
-// ─── SESSION DETAIL ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// SESSION DETAIL
+// ═══════════════════════════════════════════════════════
 async function loadSessionDetail(sid) {
   const { data: s, error } = await sb.from('sessions').select('*').eq('id', sid).single();
   if (error) { console.error(error); return; }
@@ -433,12 +583,11 @@ async function loadSessionDetail(sid) {
     + (s.duration_seconds ? ' · '+fmtDuration(s.duration_seconds) : '');
 
   const sc = {completed:'badge-green',processing:'badge-amber',error:'badge-gray',recording:'badge-gray'};
-  const badges = [
+  document.getElementById('headerBadges').innerHTML = [
     s.language_mix ? `<span class="badge badge-purple">${esc(s.language_mix)}</span>` : '',
-    s.mood         ? `<span class="badge badge-amber">${esc(s.mood)}</span>` : '',
+    s.mood         ? `<span class="badge badge-amber">${esc(s.mood)}</span>`           : '',
     `<span class="badge ${sc[s.status]||'badge-gray'}">${s.status}</span>`,
   ].filter(Boolean).join('');
-  document.getElementById('headerBadges').innerHTML = badges;
 
   if (s.status === 'completed') {
     document.getElementById('statsBar').style.display = 'grid';
@@ -452,12 +601,14 @@ async function loadSessionDetail(sid) {
     document.getElementById('statsBar').style.display = 'none';
     document.getElementById('tabBar').style.display   = 'none';
     document.getElementById('mainContent').innerHTML = s.status==='error'
-      ? `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Processing error</div><div class="empty-sub">Check Modal logs for details.</div></div>`
-      : `<div class="processing-banner"><div class="spinner"></div><div class="pb-text"><strong>Processing your recording...</strong>Takes 20–30 min. Page auto-checks every 30 seconds.</div></div>`;
+      ? `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Processing error</div><div class="empty-sub">Check Modal logs.</div></div>`
+      : `<div class="processing-banner"><div class="spinner"></div><div class="pb-text"><strong>Processing your recording...</strong>Takes 20–30 min. Auto-checks every 30 seconds.</div></div>`;
   }
 }
 
-// ─── RENDER TAB ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// RENDER TAB
+// ═══════════════════════════════════════════════════════
 function renderTab(s) {
   const content = document.getElementById('mainContent');
   document.querySelectorAll('.tab').forEach(t =>
@@ -467,7 +618,7 @@ function renderTab(s) {
   if (currentTab === 'summary') {
     const spkDescs = s.speaker_descriptions || {};
 
-    const speakerRows = (s.speakers||[]).map((sp, i) => `
+    const speakerRows = (s.speakers||[]).map((sp,i) => `
       <div style="background:#fff;border:1px solid #e8e8e4;border-radius:10px;padding:12px 14px;">
         <div class="speaker-row-top">
           <div class="speaker-name-wrap">
@@ -495,26 +646,12 @@ function renderTab(s) {
     const summaryParas = (s.summary||'No summary available')
       .split('\n').filter(p=>p.trim()).map(p=>`<p>${esc(p)}</p>`).join('');
 
-    const actionHTML = (s.action_items||[]).length ? `
-      <div class="section">
-        <div class="section-title">Action items</div>
-        <div class="action-list">
-          ${(s.action_items||[]).map(a=>`<div class="action-item"><span class="action-arrow">→</span>${esc(a)}</div>`).join('')}
-        </div>
-      </div>` : '';
-
-    const kwHTML = (s.keywords||[]).length ? `
-      <div class="section">
-        <div class="section-title">Keywords & Topics</div>
-        <div class="keywords-wrap">${(s.keywords||[]).map(k=>`<span class="keyword">${esc(k)}</span>`).join('')}</div>
-      </div>` : '';
-
     content.innerHTML = `
       ${speakerRows ? `<div class="section"><div class="section-title">Who spoke</div><div class="speaker-list">${speakerRows}</div></div>` : ''}
       ${infoCards   ? `<div class="info-grid">${infoCards}</div>` : ''}
       <div class="section"><div class="section-title">What went down</div><div class="summary-box">${summaryParas}</div></div>
-      ${actionHTML}
-      ${kwHTML}`;
+      ${(s.action_items||[]).length ? `<div class="section"><div class="section-title">Action items</div><div class="action-list">${(s.action_items||[]).map(a=>`<div class="action-item"><span class="action-arrow">→</span>${esc(a)}</div>`).join('')}</div></div>` : ''}
+      ${(s.keywords||[]).length ? `<div class="section"><div class="section-title">Keywords & Topics</div><div class="keywords-wrap">${(s.keywords||[]).map(k=>`<span class="keyword">${esc(k)}</span>`).join('')}</div></div>` : ''}`;
   }
 
   else if (currentTab === 'transcript') {
@@ -543,7 +680,7 @@ function renderTab(s) {
   }
 
   else if (currentTab === 'insights') {
-    const spkDescs = s.speaker_descriptions || {};
+    const spkDescs  = s.speaker_descriptions || {};
     const descCards = Object.entries(spkDescs).map(([spk,desc])=>`
       <div class="action-item" style="flex-direction:column;gap:4px">
         <span style="font-size:12px;font-weight:600;color:#0f9b6e">${esc(spk)}</span>
