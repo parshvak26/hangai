@@ -193,18 +193,19 @@
   .up-bar-fill { height: 100%; background: var(--primary); border-radius: 6px; width: 0%; transition: width 0.4s ease; }
   .up-size { font-size: 12px; color: var(--text-tert); margin-top: 8px; font-weight: 500; }
 
-  .rec-timer { position: fixed; bottom: 32px; right: 32px; background: var(--danger); color: white; padding: 12px 20px; border-radius: 30px; font-size: 15px; font-weight: 700; display: none; z-index: var(--z-toast); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); display: flex; align-items: center; gap: 8px; }
+  .rec-timer { position: fixed; bottom: 32px; right: 32px; background: var(--danger); color: white; padding: 12px 20px; border-radius: 30px; font-size: 15px; font-weight: 700; display: none; z-index: var(--z-toast); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); align-items: center; gap: 8px; }
   .rec-timer.visible { display: flex; animation: slideUp 0.2s; }
   .rec-icon { width: 10px; height: 10px; background: white; border-radius: 50%; animation: blink 1s infinite; }
 
   /* ── MOBILE RESPONSIVENESS ── */
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 30; backdrop-filter: blur(2px); }
+
   @media (max-width: 768px) { 
     .app { grid-template-columns: 1fr; } 
     .nav-btn { display: block; }
     
     .sidebar { position: fixed; inset: 0; right: 20%; box-shadow: var(--shadow-float); transform: translateX(-100%); width: 80%; max-width: 320px; }
     .sidebar.open { transform: translateX(0); }
-    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 30; backdrop-filter: blur(2px); }
     .sidebar.open + .sidebar-overlay { display: block; }
     .close-sidebar { display: block; }
 
@@ -260,7 +261,6 @@
       <div style="padding:20px 16px;font-size:14px;color:var(--text-tert);text-align:center;">Loading sessions...</div>
     </div>
   </div>
-  <div class="sidebar-overlay" onclick="document.getElementById('sidebar').classList.remove('open')"></div>
 
   <div class="main">
     <div class="main-header">
@@ -299,6 +299,7 @@
     </div>
   </div>
 </div>
+<div class="sidebar-overlay" onclick="document.getElementById('sidebar').classList.remove('open')"></div>
 
 <div class="rec-timer" id="recTimer">
   <div class="rec-icon"></div>
@@ -747,9 +748,24 @@ document.addEventListener('click', (e) => {
 
 async function deleteSession(e, sid) {
   e.stopPropagation();
+  
+  // Close the menu immediately
+  const menu = document.getElementById('menu-'+sid);
+  if (menu) menu.classList.remove('open');
+
   if (!confirm('Delete this session? This cannot be undone.')) return;
 
-  await sb.from('sessions').delete().eq('id', sid);
+  try {
+    const { error } = await sb.from('sessions').delete().eq('id', sid);
+    if (error) {
+       console.error("Delete failed", error);
+       alert("Failed to delete session. " + error.message);
+       return;
+    }
+  } catch (err) {
+    console.error("Delete exception", err);
+    return;
+  }
 
   if (currentSession?.id === sid) {
     currentSession = null;
