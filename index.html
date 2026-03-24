@@ -1488,8 +1488,8 @@
         
         xhr.setRequestHeader('Content-Type', blob.type || 'audio/webm');
         
-        // 3 minute maximum timeout to prevent eternal hangs if 5G drops
-        xhr.timeout = 180000; 
+        // 10 minute maximum timeout to prevent eternal hangs while supporting large meetings
+        xhr.timeout = 600000; 
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
