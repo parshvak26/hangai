@@ -1342,217 +1342,6 @@
     const AVATAR_CLS = ['av0', 'av1', 'av2', 'av3', 'av4'];
 
     // ═══════════════════════════════════════════════════════
-    // AUDIO PROCESSING — Web Audio API pipeline
-    //
-    // Pipeline: decode → high-pass → low-pass → (softened) compressor → 16kHz mono WAV
-    //
-    // Changes vs v1:
-    //   • Dynamics compressor softened: ratio 4:1 → 2:1, threshold -24 → -20dBFS,
-    //     knee 8 → 12 (softer). Reason: aggressive compression was flattening
-    //     natural volume variation that Whisper uses to distinguish speakers and
-    //     detect speech boundaries. 2:1 still levels quiet/loud speakers without
-    //     destroying dynamics.
-    //   • Returns { wavBlob, audioBuffer } so the caller can chunk large recordings
-    //     without a second decode cycle.
-    // ═══════════════════════════════════════════════════════
-
-    /**
-     * Decode, filter, and resample a raw MediaRecorder blob to 16kHz mono WAV.
-     * @param {Blob} rawBlob  - Raw audio from MediaRecorder (webm/opus or wav)
-     * @param {Function} onProgress - (label: string, pct: number) => void
-     * @returns {{ wavBlob: Blob, audioBuffer: AudioBuffer }}
-     */
-    async function processAudioBlob(rawBlob, onProgress) {
-      onProgress('Decoding audio...', 10);
-
-      const arrayBuffer = await rawBlob.arrayBuffer();
-
-      // Decode at native rate first
-      const audioCtx = new AudioContext();
-      const decoded = await audioCtx.decodeAudioData(arrayBuffer);
-
-      onProgress('Applying audio filters...', 30);
-
-      // ── Resample to 16000 Hz (Whisper's native rate) ──
-      const TARGET_SR = 16000;
-      const duration = decoded.duration;
-      const outputFrames = Math.ceil(duration * TARGET_SR);
-
-      const offlineCtx = new OfflineAudioContext(1, outputFrames, TARGET_SR);
-
-      // Source
-      const source = offlineCtx.createBufferSource();
-      source.buffer = decoded;
-
-      // High-pass @ 80Hz — removes low rumble, desk vibrations, handling noise
-      const hpf = offlineCtx.createBiquadFilter();
-      hpf.type = 'highpass';
-      hpf.frequency.value = 80;
-      hpf.Q.value = 0.7;
-
-      // Low-pass @ 8000Hz — removes hiss above speech range
-      const lpf = offlineCtx.createBiquadFilter();
-      lpf.type = 'lowpass';
-      lpf.frequency.value = 8000;
-      lpf.Q.value = 0.7;
-
-      // ── Dynamics compressor — SOFTENED from v1 ──────────────────────────────
-      // v1 settings: threshold -24, knee 8, ratio 4:1, attack 3ms, release 250ms
-      // v2 settings: threshold -20, knee 12, ratio 2:1, attack 5ms, release 300ms
-      //
-      // Why soften?
-      //   Ratio 4:1 was over-compressing natural speech dynamics. Volume variation
-      //   carries information — Whisper and pyannote both use energy levels to
-      //   detect speech vs silence and identify speaker turns. Heavy compression
-      //   confused VAD (all segments look similarly loud → harder to find silence
-      //   boundaries) and made quiet speakers indistinguishable from silence.
-      //   Ratio 2:1 still tames loud peaks and brings up very quiet speech without
-      //   destroying the dynamic range that downstream models rely on.
-      const compressor = offlineCtx.createDynamicsCompressor();
-      compressor.threshold.value = -20;    // was -24dBFS — less aggressive onset
-      compressor.knee.value = 12;     // was 8 — softer, more musical knee
-      compressor.ratio.value = 2;      // was 4 — gentle 2:1 instead of 4:1
-      compressor.attack.value = 0.005;  // was 0.003 — 5ms, slightly slower
-      compressor.release.value = 0.3;    // was 0.25 — 300ms release
-
-      // Chain: source → HPF → LPF → compressor → output
-      source.connect(hpf);
-      hpf.connect(lpf);
-      lpf.connect(compressor);
-      compressor.connect(offlineCtx.destination);
-      source.start(0);
-
-      onProgress('Rendering clean audio...', 55);
-      const rendered = await offlineCtx.startRendering();
-      await audioCtx.close();
-
-      onProgress('Encoding WAV...', 75);
-
-      const wav = audioBufferToWav(rendered);
-      const wavBlob = new Blob([wav], { type: 'audio/wav' });
-
-      onProgress('WAV ready...', 85);
-
-      // Return both the encoded blob AND the raw AudioBuffer so the caller
-      // can slice it for chunking without decoding again.
-      return { wavBlob, audioBuffer: rendered };
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // AUDIO CHUNKING (Change J)
-    //
-    // For recordings longer than CHUNK_DURATION_S (5 min), splits the processed
-    // AudioBuffer into overlapping WAV blobs.
-    //
-    // Overlap logic:
-    //   chunk 0: samples [0, chunkLen)
-    //   chunk 1: samples [step, step + chunkLen)      where step = chunkLen - overlapLen
-    //   chunk 2: samples [2*step, 2*step + chunkLen)
-    //   ...
-    //
-    // The 30s overlap means Whisper on the backend has full context at each
-    // chunk boundary instead of a hard cut. The backend deduplicates these
-    // overlap segments by timestamp + text similarity.
-    // ═══════════════════════════════════════════════════════
-
-    /**
-     * Split an AudioBuffer into overlapping WAV blobs.
-     * Returns a single-element array (the whole recording) if shorter than CHUNK_DURATION_S.
-     * @param {AudioBuffer} buffer - 16kHz mono AudioBuffer (output of processAudioBlob)
-     * @returns {Blob[]}
-     */
-    function chunkAudioBuffer(buffer) {
-      const sr = buffer.sampleRate;                      // 16000
-      const pcmData = buffer.getChannelData(0);               // Float32Array
-      const totalSamples = pcmData.length;
-      const chunkSamples = CHUNK_DURATION_S * sr;
-      const overlapSamples = OVERLAP_S * sr;
-      const stepSamples = chunkSamples - overlapSamples;
-
-      // Short recording — no split needed
-      if (totalSamples <= chunkSamples) {
-        return [floatArrayToWav(pcmData, sr)];
-      }
-
-      const chunks = [];
-      let offset = 0;
-      let chunkIdx = 0;
-
-      while (offset < totalSamples) {
-        const end = Math.min(offset + chunkSamples, totalSamples);
-        const slice = pcmData.slice(offset, end);
-        chunks.push(floatArrayToWav(slice, sr));
-        console.log(`[HangAI] Chunk ${chunkIdx}: samples ${offset}→${end} (${((end - offset) / sr).toFixed(0)}s)`);
-        offset += stepSamples;
-        chunkIdx++;
-        if (end >= totalSamples) break;
-      }
-
-      console.log(`[HangAI] Split into ${chunks.length} chunks with ${OVERLAP_S}s overlap`);
-      return chunks;
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // WAV ENCODING HELPERS
-    // ═══════════════════════════════════════════════════════
-
-    /**
-     * Encode an AudioBuffer to a PCM16 mono WAV ArrayBuffer.
-     * Used for the single-chunk (short recording) path.
-     */
-    function audioBufferToWav(buffer) {
-      return floatArrayToWav(buffer.getChannelData(0), buffer.sampleRate);
-    }
-
-    /**
-     * Encode a Float32Array of PCM samples to a WAV Blob.
-     * Handles both the single-chunk and multi-chunk paths.
-     * @param {Float32Array} pcmData
-     * @param {number} sampleRate
-     * @returns {Blob}
-     */
-    function floatArrayToWav(pcmData, sampleRate) {
-      const numSamples = pcmData.length;
-      const byteLength = 44 + numSamples * 2;   // RIFF header (44 bytes) + PCM16 data
-
-      const out = new ArrayBuffer(byteLength);
-      const view = new DataView(out);
-
-      // RIFF chunk
-      writeStr(view, 0, 'RIFF');
-      view.setUint32(4, byteLength - 8, true);
-      writeStr(view, 8, 'WAVE');
-
-      // fmt sub-chunk
-      writeStr(view, 12, 'fmt ');
-      view.setUint32(16, 16, true);   // sub-chunk size (PCM = 16)
-      view.setUint16(20, 1, true);   // audio format (PCM = 1)
-      view.setUint16(22, 1, true);   // num channels (mono = 1)
-      view.setUint32(24, sampleRate, true);   // sample rate
-      view.setUint32(28, sampleRate * 2, true); // byte rate (16-bit mono)
-      view.setUint16(32, 2, true);   // block align (16-bit mono = 2)
-      view.setUint16(34, 16, true);   // bits per sample
-
-      // data sub-chunk
-      writeStr(view, 36, 'data');
-      view.setUint32(40, numSamples * 2, true);
-
-      // Samples — clamp float32 → int16
-      let offset = 44;
-      for (let i = 0; i < numSamples; i++) {
-        const s = Math.max(-1, Math.min(1, pcmData[i]));
-        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-        offset += 2;
-      }
-
-      return new Blob([out], { type: 'audio/wav' });
-    }
-
-    function writeStr(view, offset, str) {
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-    }
-
-    // ═══════════════════════════════════════════════════════
     // RECORDING
     // ═══════════════════════════════════════════════════════
 
@@ -1651,37 +1440,23 @@
       };
 
       try {
-        // ── Process audio through Web Audio API pipeline ──────────────────────
-        const { wavBlob, audioBuffer } = await processAudioBlob(rawBlob, setProgress);
+        // ── Upload raw payload immediately to avoid iOS/Android memory crashes ─
+        const totalMB = (rawBlob.size / 1048576).toFixed(2);
+        upSize.textContent = `${totalMB} MB (${recorder.mimeType || 'native audio'})`;
 
-        // ── Chunk if recording > 5 minutes ───────────────────────────────────
-        // J: Split the processed AudioBuffer into overlapping WAV blobs.
-        //    chunkAudioBuffer returns a single-element array for short recordings,
-        //    so the upload loop below works identically for both cases.
-        const durationSecs = audioBuffer.duration;
-        const wavChunks = chunkAudioBuffer(audioBuffer);
-        const totalChunks = wavChunks.length;
-        const totalMB = (wavChunks.reduce((s, b) => s + b.size, 0) / 1048576).toFixed(2);
+        setProgress('Uploading to secure cloud...', 10);
 
-        upSize.textContent = totalChunks > 1
-          ? `${totalMB} MB total · ${totalChunks} chunks of ~${CHUNK_DURATION_S / 60} min (${OVERLAP_S}s overlap, 16kHz WAV)`
-          : `${totalMB} MB WAV (16kHz mono)`;
-
-        console.log(`[HangAI] ${totalChunks} chunk(s) to upload, ${totalMB} MB total, ${durationSecs.toFixed(0)}s`);
-
-        // ── Upload all chunks ─────────────────────────────────────────────────
-        for (let i = 0; i < totalChunks; i++) {
-          await uploadWavChunk(wavChunks[i], i, totalChunks, setProgress);
-        }
+        // Upload directly! No chunking logic anymore, just upload chunk_num=0
+        await uploadRawBlob(rawBlob, sessionId, setProgress);
 
         setProgress('Starting AI pipeline...', 98);
 
         // ── Trigger backend processing ────────────────────────────────────────
         await fetch(
-          `${CONFIG.MODAL_TRIGGER_URL}?session_id=${sessionId}&total_chunks=${totalChunks}`,
+          `${CONFIG.MODAL_TRIGGER_URL}?session_id=${sessionId}&total_chunks=1`,
           { method: 'POST' }
         );
-        await sb.from('sessions').update({ status: 'processing', total_chunks: totalChunks }).eq('id', sessionId);
+        await sb.from('sessions').update({ status: 'processing', total_chunks: 1 }).eq('id', sessionId);
 
         setProgress('✅ Done! AI is on it...', 100);
         setTimeout(() => progressEl.classList.remove('visible'), 2500);
@@ -1691,7 +1466,7 @@
 
       } catch (err) {
         progressEl.classList.remove('visible');
-        alert('Failed: ' + err.message);
+        alert('Upload failed. Please check your network connection.\n\nError: ' + err.message);
         await sb.from('sessions').update({ status: 'error' }).eq('id', sessionId);
       } finally {
         cleanup(btn);
@@ -1699,31 +1474,28 @@
     }
 
     /**
-     * Upload a single WAV chunk to R2 via Modal endpoint.
-     * Shows per-chunk upload progress in the progress bar.
+     * Upload the raw WAV/WebM chunk to R2 via Modal endpoint.
+     * Incorporates explicit timeouts and mobile failure recovery.
      */
-    function uploadWavChunk(blob, chunkIdx, totalChunks, setProgress) {
+    function uploadRawBlob(blob, sid, setProgress) {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open(
           'POST',
-          `${CONFIG.MODAL_UPLOAD_URL}?session_id=${sessionId}&chunk_num=${chunkIdx}`,
+          `${CONFIG.MODAL_UPLOAD_URL}?session_id=${sid}&chunk_num=0`,
           true
         );
-        xhr.setRequestHeader('Content-Type', 'audio/wav');
+        
+        xhr.setRequestHeader('Content-Type', blob.type || 'audio/webm');
+        
+        // 3 minute maximum timeout to prevent eternal hangs if 5G drops
+        xhr.timeout = 180000; 
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const chunkProgress = e.loaded / e.total;
-            // Map to 87–99% of the overall progress bar (post-processing was 0–85%)
-            const overallPct = (chunkIdx + chunkProgress) / totalChunks;
-            const barPct = Math.round(87 + overallPct * 12);
-            setProgress(
-              totalChunks > 1
-                ? `Uploading chunk ${chunkIdx + 1}/${totalChunks} — ${Math.round(chunkProgress * 100)}%`
-                : `Uploading — ${Math.round(chunkProgress * 100)}%`,
-              barPct
-            );
+            const barPct = Math.round(10 + chunkProgress * 85);
+            setProgress(`Uploading — ${Math.round(chunkProgress * 100)}%`, barPct);
           }
         };
 
@@ -1731,7 +1503,9 @@
           if (xhr.status >= 200 && xhr.status < 300) resolve();
           else reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText}`));
         };
-        xhr.onerror = () => reject(new Error('Network error during upload'));
+        xhr.onerror = () => reject(new Error('Network connection failed or dropped by OS.'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out. Connection too slow.'));
+        
         xhr.send(blob);
       });
     }
