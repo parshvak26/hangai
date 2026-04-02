@@ -1,0 +1,39 @@
+# HangAI v5 — Production Dependencies
+# ──────────────────────────────────────
+# Install: pip install -r requirements.txt
+# Modal image: these are specified inline in modal_app.py image definition
+
+# ── Core compute ─────────────────────────────────────────────────
+numpy<2.0
+torch==2.4.0
+torchaudio==2.4.0
+
+# ── ASR — local fallback ─────────────────────────────────────────
+faster-whisper==1.0.3
+pyannote.audio==3.3.2
+huggingface_hub<0.25
+
+# ── ASR — cloud providers (official SDKs) ────────────────────────
+assemblyai>=0.30.0           # AssemblyAI (primary)
+elevenlabs>=1.0.0            # ElevenLabs Scribe (secondary)
+deepgram-sdk>=3.0.0          # Deepgram nova-3 (tertiary)
+httpx>=0.25.0                # elevenlabs SDK transitive dep
+
+# ── LLM ──────────────────────────────────────────────────────────
+google-genai>=1.0.0          # Gemini 2.5 Flash (correction + analysis)
+
+# ── Infrastructure ───────────────────────────────────────────────
+boto3==1.35.0                # Cloudflare R2 (S3-compatible)
+supabase==2.7.4              # Database
+
+# ── Audio processing ─────────────────────────────────────────────
+pydub==0.25.1
+# ffmpeg is installed as system package (apt-get install ffmpeg)
+
+# ── API server ───────────────────────────────────────────────────
+fastapi==0.115.0
+python-multipart==0.0.12
+
+# ── Dev / deployment ─────────────────────────────────────────────
+modal>=0.64.0                # Serverless GPU platform
+python-dotenv>=1.0.0         # Local .env loading for development
